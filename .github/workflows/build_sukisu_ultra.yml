@@ -118,7 +118,7 @@ jobs:
           cd kernel_workspace/kernel_platform
           bash ../../repo/add_sus_map_kernel.sh
           cd KernelSU
-          bash ../../../../repo/add_sus_map_handler.sh
+          bash ../../../repo/add_sus_map_handler.sh
           echo "SUS_MAP feature added"
 
       - name: 应用隐藏应用补丁
