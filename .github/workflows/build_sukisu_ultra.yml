@@ -113,39 +113,7 @@ jobs:
           patch -p1 < ../../repo/susfs-upgrade-1512.patch
           echo "== Adding CMD_SUSFS_ADD_SUS_MAP handler to KernelSU =="
           cd KernelSU
-          # Add the SUS_MAP handler in the prctl function (same pattern as other handlers)
-          # Insert after the OPEN_REDIRECT handler block
-          SUPERCALLS_FILE=$(find . -name "sucompat.c" -o -name "supercalls.c" | head -1)
-          if [ -n "$SUPERCALLS_FILE" ]; then
-            # Add SUS_MAP handler after OPEN_REDIRECT handler
-            sed -i '/#endif.*CONFIG_KSU_SUSFS_OPEN_REDIRECT/a\
-#ifdef CONFIG_KSU_SUSFS_SUS_MAP\
-\t\tif (arg2 == CMD_SUSFS_ADD_SUS_MAP) {\
-\t\t\tint error = 0;\
-\t\t\tif (!ksu_access_ok((void __user*)arg3, sizeof(struct st_susfs_sus_map))) {\
-\t\t\t\tpr_err("susfs: CMD_SUSFS_ADD_SUS_MAP -> arg3 is not accessible\\n");\
-\t\t\t\treturn 0;\
-\t\t\t}\
-\t\t\tif (!ksu_access_ok((void __user*)arg5, sizeof(error))) {\
-\t\t\t\tpr_err("susfs: CMD_SUSFS_ADD_SUS_MAP -> arg5 is not accessible\\n");\
-\t\t\t\treturn 0;\
-\t\t\t}\
-\t\t\terror = susfs_add_sus_map((struct st_susfs_sus_map __user*)arg3);\
-\t\t\tpr_info("susfs: CMD_SUSFS_ADD_SUS_MAP -> ret: %d\\n", error);\
-\t\t\tif (copy_to_user((void __user*)arg5, \&error, sizeof(error)))\
-\t\t\t\tpr_info("susfs: copy_to_user() failed\\n");\
-\t\t\treturn 0;\
-\t\t}\
-#endif //#ifdef CONFIG_KSU_SUSFS_SUS_MAP' "$SUPERCALLS_FILE"
-            # Add SUS_MAP to enabled_features (bit 13)
-            sed -i '/#ifdef CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT/i\
-#ifdef CONFIG_KSU_SUSFS_SUS_MAP\
-\t\t\tenabled_features |= (1 << 13);\
-#endif' "$SUPERCALLS_FILE"
-            echo "SUS_MAP handler added to $SUPERCALLS_FILE"
-          else
-            echo "WARNING: Could not find sucompat.c or supercalls.c"
-          fi
+          bash ../../../../repo/add_sus_map_handler.sh
           cd ..
           echo "SUSFS v1.5.12 upgrade complete with SUS_MAP"
 
