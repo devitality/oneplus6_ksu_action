@@ -41,6 +41,10 @@ fi
 echo "  [2/6] Patching include/linux/susfs.h..."
 SUSH="include/linux/susfs.h"
 if ! grep -q "susfs_add_sus_map" "$SUSH"; then
+    # Add include of susfs_def.h at top if not already there
+    if ! grep -q "susfs_def.h" "$SUSH"; then
+        sed -i '1a #include <linux/susfs_def.h>' "$SUSH"
+    fi
     sed -i '/susfs_get_enabled_features/i \
 /* sus_map */\
 #ifdef CONFIG_KSU_SUSFS_SUS_MAP\
