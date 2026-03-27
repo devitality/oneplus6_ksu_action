@@ -117,12 +117,14 @@ jobs:
         run: |
           cd kernel_workspace/kernel_platform
           # Fix compile issues from --force patch
-          # Add susfs_def.h AFTER the last #include in fs/stat.c (not at top — needs kernel types)
-          if grep -q "TASK_STRUCT_NON_ROOT_USER_APP_PROC" fs/stat.c && ! grep -q "susfs_def.h" fs/stat.c; then
-            # Find the last #include line number and add after it
-            LAST_INC=$(grep -n "^#include" fs/stat.c | tail -1 | cut -d: -f1)
+          # fs/stat.c has susfs_def.h but BELOW the code that uses TASK_STRUCT_NON_ROOT_USER_APP_PROC
+          # Remove and re-add in the right place
+          if grep -q "TASK_STRUCT_NON_ROOT_USER_APP_PROC" fs/stat.c; then
+            sed -i '/#include.*susfs_def\.h/d' fs/stat.c
+            sed -i '/#include.*susfs\.h/d' fs/stat.c
+            LAST_INC=$(grep -n "^#include <linux/" fs/stat.c | tail -1 | cut -d: -f1)
             sed -i "${LAST_INC}a #include <linux/susfs_def.h>" fs/stat.c
-            echo "Fixed fs/stat.c: added susfs_def.h after line $LAST_INC"
+            echo "Fixed fs/stat.c: moved susfs_def.h to line $((LAST_INC+1))"
           fi
 
       - name: Add SUS_MAP feature (standalone, no version upgrade)
