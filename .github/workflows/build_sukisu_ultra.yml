@@ -112,6 +112,23 @@ jobs:
           done
           echo "完成 (non-critical .rej files are acceptable)"
 
+      - name: Fix SUSFS compile issues
+        if: ${{ matrix.SUSFS == 'true' }}
+        run: |
+          cd kernel_workspace/kernel_platform
+          # Fix fs/stat.c — add missing susfs_def.h include
+          if grep -q "TASK_STRUCT_NON_ROOT_USER_APP_PROC" fs/stat.c && ! grep -q "susfs_def.h" fs/stat.c; then
+            sed -i '/#include <linux\/pagemap.h>/a #include <linux/susfs_def.h>' fs/stat.c
+            echo "Fixed fs/stat.c: added susfs_def.h include"
+          fi
+          # Fix any other files with missing susfs includes
+          for f in $(grep -rl "TASK_STRUCT_NON_ROOT_USER_APP_PROC\|INODE_STATE_SUS" fs/ --include="*.c" 2>/dev/null); do
+            if ! grep -q "susfs_def.h" "$f"; then
+              sed -i '1a #include <linux/susfs_def.h>' "$f"
+              echo "Fixed $f: added susfs_def.h"
+            fi
+          done
+
       - name: Add SUS_MAP feature (standalone, no version upgrade)
         if: ${{ matrix.SUSFS == 'true' }}
         run: |
