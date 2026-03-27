@@ -117,16 +117,13 @@ jobs:
         run: |
           cd kernel_workspace/kernel_platform
           # Fix compile issues from --force patch
-          # 1. Force susfs_def.h at top of fs/stat.c (before any SUSFS code)
-          sed -i '1i #include <linux/susfs_def.h>' fs/stat.c
-          echo "Fixed fs/stat.c: force-added susfs_def.h at line 1"
-          # 2. Fix any other files needing susfs includes
-          for f in fs/susfs.c fs/namei.c fs/open.c fs/read_write.c; do
-            if [ -f "$f" ] && grep -q "susfs_" "$f" && ! grep -q "susfs_def.h" "$f"; then
-              sed -i '1i #include <linux/susfs_def.h>' "$f"
-              echo "Fixed $f"
-            fi
-          done
+          # Add susfs_def.h AFTER the last #include in fs/stat.c (not at top — needs kernel types)
+          if grep -q "TASK_STRUCT_NON_ROOT_USER_APP_PROC" fs/stat.c && ! grep -q "susfs_def.h" fs/stat.c; then
+            # Find the last #include line number and add after it
+            LAST_INC=$(grep -n "^#include" fs/stat.c | tail -1 | cut -d: -f1)
+            sed -i "${LAST_INC}a #include <linux/susfs_def.h>" fs/stat.c
+            echo "Fixed fs/stat.c: added susfs_def.h after line $LAST_INC"
+          fi
 
       - name: Add SUS_MAP feature (standalone, no version upgrade)
         if: ${{ matrix.SUSFS == 'true' }}

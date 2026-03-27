@@ -41,9 +41,14 @@ fi
 echo "  [2/6] Patching include/linux/susfs.h..."
 SUSH="include/linux/susfs.h"
 if ! grep -q "susfs_add_sus_map" "$SUSH"; then
-    # Add include of susfs_def.h at top if not already there
+    # Add include of susfs_def.h after last existing include (not at top — needs kernel types)
     if ! grep -q "susfs_def.h" "$SUSH"; then
-        sed -i '1a #include <linux/susfs_def.h>' "$SUSH"
+        LAST_INC=$(grep -n "^#include" "$SUSH" | tail -1 | cut -d: -f1)
+        if [ -n "$LAST_INC" ]; then
+            sed -i "${LAST_INC}a #include <linux/susfs_def.h>" "$SUSH"
+        else
+            sed -i '1a #include <linux/susfs_def.h>' "$SUSH"
+        fi
     fi
     sed -i '/susfs_get_enabled_features/i \
 /* sus_map */\
