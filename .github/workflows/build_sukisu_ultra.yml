@@ -112,19 +112,14 @@ jobs:
           done
           echo "完成 (non-critical .rej files are acceptable)"
 
-      - name: Upgrade SUSFS to v1.5.12 (adds SUS_MAP)
+      - name: Add SUS_MAP feature (standalone, no version upgrade)
         if: ${{ matrix.SUSFS == 'true' }}
         run: |
           cd kernel_workspace/kernel_platform
-          echo "== Upgrading SUSFS v1.5.5 -> v1.5.11 =="
-          patch -p1 < ../../repo/susfs-upgrade-1511.patch
-          echo "== Upgrading SUSFS v1.5.11 -> v1.5.12 (adds SUS_MAP) =="
-          patch -p1 < ../../repo/susfs-upgrade-1512.patch
-          echo "== Adding CMD_SUSFS_ADD_SUS_MAP handler to KernelSU =="
+          bash ../../repo/add_sus_map_kernel.sh
           cd KernelSU
           bash ../../../../repo/add_sus_map_handler.sh
-          cd ..
-          echo "SUSFS v1.5.12 upgrade complete with SUS_MAP"
+          echo "SUS_MAP feature added"
 
       - name: 应用隐藏应用补丁
         run: |

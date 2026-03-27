@@ -1,0 +1,51 @@
+--- a/include/linux/susfs_def.h
++++ b/include/linux/susfs_def.h
+@@ -27,6 +27,7 @@
+ #define CMD_SUSFS_SHOW_ENABLED_FEATURES 0x555e2
+ #define CMD_SUSFS_SHOW_VARIANT 0x555e3
+ #define CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING 0x60010
++#define CMD_SUSFS_ADD_SUS_MAP 0x60020
+
+ #define SUSFS_MAX_LEN_PATHNAME 256
+
+@@ -53,12 +54,14 @@
+ #define AS_FLAGS_OPEN_REDIRECT 27
+ #define AS_FLAGS_ANDROID_DATA_ROOT_DIR 28
+ #define AS_FLAGS_SDCARD_ROOT_DIR 29
++#define AS_FLAGS_SUS_MAP 30
+ #define BIT_SUS_PATH BIT(24)
+ #define BIT_SUS_MOUNT BIT(25)
+ #define BIT_SUS_KSTAT BIT(26)
+ #define BIT_OPEN_REDIRECT BIT(27)
+ #define BIT_ANDROID_DATA_ROOT_DIR BIT(28)
+ #define BIT_ANDROID_SDCARD_ROOT_DIR BIT(29)
++#define BIT_SUS_MAPS BIT(30)
+
+ #define ND_STATE_LOOKUP_LAST 32
+ #define ND_STATE_OPEN_LAST 64
+@@ -100,6 +103,13 @@
+ };
+ #endif
+
++/* sus_map */
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++struct st_susfs_sus_map {
++	char target_pathname[SUSFS_MAX_LEN_PATHNAME];
++};
++#endif
++
+ /***********************/
+ /* FORWARD DECLARATION */
+ /***********************/
+--- a/include/linux/susfs.h
++++ b/include/linux/susfs.h
+@@ -178,6 +178,10 @@
+ int susfs_add_open_redirect(struct st_susfs_open_redirect* __user user_info);
+ struct filename* susfs_get_redirected_path(unsigned long ino);
+ #endif
++/* sus_map */
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++int susfs_add_sus_map(struct st_susfs_sus_map* __user user_info);
++#endif
+
+ int susfs_get_enabled_features(char __user* buf, size_t bufsize);
