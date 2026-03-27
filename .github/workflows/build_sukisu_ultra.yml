@@ -1,3 +1,4 @@
+# Build with SUS_MAP support
 name: Build LineageOS Kernel with SukiSU Ultra
 on:
   workflow_dispatch:
