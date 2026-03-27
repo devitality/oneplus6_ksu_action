@@ -55,12 +55,13 @@ jobs:
           git add -A
           git commit -m "Force remove -dirty suffix from kernel version"
 
-      - name: 添加 SukiSU Ultra
+      - name: 添加 SukiSU Ultra (pinned to v3.1.9)
         run: |
           cd kernel_workspace/kernel_platform
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s nongki
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/v3.1.9/kernel/setup.sh" | bash -s nongki
           cd ./KernelSU
-          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 10606)
+          git checkout v3.1.9 2>/dev/null || git checkout b8b75349 2>/dev/null || true
+          KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" 10606)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           echo "KSU_VERSION=$KSU_VERSION" >> $GITHUB_ENV
           export KSU_VERSION=$KSU_VERSION
