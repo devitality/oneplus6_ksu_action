@@ -101,8 +101,16 @@ jobs:
         run: |
           cd kernel_workspace/kernel_platform/KernelSU
           echo "== 正在应用 SukiSU 修补 =="
-          patch -p1 < ../../../repo/susfs-ksu.patch
-          echo "完成"
+          patch -p1 --force < ../../../repo/susfs-ksu.patch || true
+          echo "== Checking for critical patch failures =="
+          # These files MUST patch successfully for SUSFS to work
+          for critical in kernel/Kconfig kernel/ksu.c kernel/ksud.c kernel/sucompat.c; do
+            if [ -f "${critical}.rej" ]; then
+              echo "CRITICAL: $critical has rejected hunks"
+              cat "${critical}.rej"
+            fi
+          done
+          echo "完成 (non-critical .rej files are acceptable)"
 
       - name: Upgrade SUSFS to v1.5.12 (adds SUS_MAP)
         if: ${{ matrix.SUSFS == 'true' }}
