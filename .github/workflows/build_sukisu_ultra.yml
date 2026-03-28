@@ -123,10 +123,18 @@ jobs:
             # Remove any existing susfs includes
             sed -i '/#include.*susfs_def\.h/d' fs/stat.c
             sed -i '/#include.*susfs\.h/d' fs/stat.c
-            # Add include BEFORE line 1 of the file (ensures it's above ALL code)
-            FIRST_INC=$(grep -n "^#include" fs/stat.c | head -1 | cut -d: -f1)
-            sed -i "${FIRST_INC}i #include <linux/susfs_def.h>" fs/stat.c
-            echo "Fixed fs/stat.c: susfs_def.h at line $FIRST_INC (before first include)"
+            # Add AFTER linux/fs.h (which includes types.h) but BEFORE SUSFS code
+            # linux/fs.h is always present and provides bool via types.h
+            FS_H_LINE=$(grep -n '#include <linux/fs.h>' fs/stat.c | head -1 | cut -d: -f1)
+            if [ -n "$FS_H_LINE" ]; then
+              sed -i "${FS_H_LINE}a #include <linux/susfs_def.h>" fs/stat.c
+              echo "Fixed fs/stat.c: susfs_def.h after linux/fs.h (line $((FS_H_LINE+1)))"
+            else
+              # Fallback: after linux/string.h or any late include
+              LATE_INC=$(grep -n '#include <linux/' fs/stat.c | tail -1 | cut -d: -f1)
+              sed -i "${LATE_INC}a #include <linux/susfs_def.h>" fs/stat.c
+              echo "Fixed fs/stat.c: susfs_def.h after last linux/ include (line $((LATE_INC+1)))"
+            fi
           fi
 
       - name: Add SUS_MAP feature (standalone, no version upgrade)
