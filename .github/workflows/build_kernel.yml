@@ -245,16 +245,11 @@ jobs:
           STUBS
           echo "  Added v1.5.12 function stubs"
 
-          echo "== Step 6: Download Andrey0800770's task_mmu.c with proper SUS_MAP hooks =="
-          # Andrey's task_mmu.c has the correct v1.5.12 SUS_MAP implementation
-          # (12 SUS_MAP references, properly integrated). Our add_sus_map_kernel.sh
-          # creates an incompatible v1.5.9-style implementation.
-          ANDREY_BASE="https://raw.githubusercontent.com/Andrey0800770/samsung_sdm845-kernel/ksu%2Bsusfs"
-          curl -sL "${ANDREY_BASE}/fs/proc/task_mmu.c" -o ./fs/proc/task_mmu.c
-          curl -sL "${ANDREY_BASE}/fs/proc/base.c" -o ./fs/proc/base.c
-          echo "  Downloaded Andrey's task_mmu.c + base.c (v1.5.12 SUS_MAP)"
-          echo "  SUS_MAP refs in task_mmu.c: $(grep -c SUS_MAP fs/proc/task_mmu.c)"
-          echo "  SUS_MAP refs in base.c: $(grep -c SUS_MAP fs/proc/base.c)"
+          echo "== Step 6: Add SUS_MAP hooks to stock LineageOS task_mmu.c + base.c =="
+          # We patch OUR task_mmu.c (not Andrey's) because Andrey's has backported
+          # infrastructure (seq_put_hex_ll, __show_smap, pkeys) that stock LineageOS lacks.
+          # Our script adapts the SUS_MAP hooks to stock function signatures.
+          bash ../../repo/add_sus_map_hooks.sh
 
           echo "== SUSFS kernel-side integration complete =="
 
