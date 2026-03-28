@@ -235,10 +235,10 @@ jobs:
           # Force-add stubs at end of file (won't conflict even if name appears elsewhere)
           cat >> "$SUSC" << 'STUBS'
 
-          /* v1.5.12 stubs for functions referenced by kernel hooks but not in this source */
+          /* v1.5.12 stubs for symbols referenced by kernel hooks */
           #ifndef SUSFS_STUB_GUARD
           #define SUSFS_STUB_GUARD
-          bool __weak susfs_is_avc_log_spoofing_enabled(void) { return false; }
+          bool susfs_is_avc_log_spoofing_enabled = false;
           int __weak susfs_sus_ino_for_filldir64(unsigned long ino) { return 0; }
           void __weak susfs_hide_sus_mnts_for_all_procs(void) { }
           #endif
