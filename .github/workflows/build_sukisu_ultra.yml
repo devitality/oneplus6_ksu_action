@@ -120,11 +120,13 @@ jobs:
           # fs/stat.c has susfs_def.h but BELOW the code that uses TASK_STRUCT_NON_ROOT_USER_APP_PROC
           # Remove and re-add in the right place
           if grep -q "TASK_STRUCT_NON_ROOT_USER_APP_PROC" fs/stat.c; then
+            # Remove any existing susfs includes
             sed -i '/#include.*susfs_def\.h/d' fs/stat.c
             sed -i '/#include.*susfs\.h/d' fs/stat.c
-            LAST_INC=$(grep -n "^#include <linux/" fs/stat.c | tail -1 | cut -d: -f1)
-            sed -i "${LAST_INC}a #include <linux/susfs_def.h>" fs/stat.c
-            echo "Fixed fs/stat.c: moved susfs_def.h to line $((LAST_INC+1))"
+            # Add include BEFORE line 1 of the file (ensures it's above ALL code)
+            FIRST_INC=$(grep -n "^#include" fs/stat.c | head -1 | cut -d: -f1)
+            sed -i "${FIRST_INC}i #include <linux/susfs_def.h>" fs/stat.c
+            echo "Fixed fs/stat.c: susfs_def.h at line $FIRST_INC (before first include)"
           fi
 
       - name: Add SUS_MAP feature (standalone, no version upgrade)
