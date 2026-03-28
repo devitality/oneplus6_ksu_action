@@ -121,13 +121,9 @@ jobs:
           # Fix ksu.c bare declaration (SukiSU v3.1.9 bug after SUSFS patch)
           KSU_C="KernelSU/kernel/ksu.c"
           if [ -f "$KSU_C" ]; then
-            echo "=== ksu.c lines 110-120 ==="
-            sed -n '110,120p' "$KSU_C"
-            # Fix bare function-like lines (no return type)
-            sed -i 's/^ksu_handle_/int ksu_handle_/' "$KSU_C"
-            # Also fix any EXPORT_SYMBOL on its own line without preceding decl
-            echo "=== after fix ==="
-            sed -n '110,120p' "$KSU_C"
+            # Remove MODULE_IMPORT_NS — doesn't exist in kernel 4.9
+            sed -i '/MODULE_IMPORT_NS/d' "$KSU_C"
+            echo "Removed MODULE_IMPORT_NS from ksu.c"
           fi
 
           # Add missing TASK_STRUCT_NON_ROOT_USER_APP_PROC define (in v1.5.11+ but not v1.5.5)
