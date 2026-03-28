@@ -28,12 +28,10 @@ fi
 # Add struct st_susfs_sus_map (before FORWARD DECLARATION section)
 if ! grep -q "st_susfs_sus_map" "$DEFH"; then
     sed -i '/FORWARD DECLARATION/i \
-/* sus_map */\
-#ifdef CONFIG_KSU_SUSFS_SUS_MAP\
+/* sus_map — struct always defined, guard only on functions */\
 struct st_susfs_sus_map {\
 \tchar target_pathname[SUSFS_MAX_LEN_PATHNAME];\
 };\
-#endif\
 ' "$DEFH"
 fi
 
