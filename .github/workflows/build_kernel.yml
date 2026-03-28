@@ -337,10 +337,14 @@ jobs:
           export PATH=$(pwd)/clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04/bin/:$PATH
           cd kernel_workspace/kernel_platform
           make O=out $KERNEL_DEFCONFIG
-          # Fix unused variable 'error' in core_hook.c line 698
+          # Fix unused variable 'error' in core_hook.c (around line 698)
           CORE_HOOK="KernelSU-Next/kernel/core_hook.c"
           if [ -f "$CORE_HOOK" ]; then
-            sed -i 's/^\(\s*\)int error;/\1int error __attribute__((unused));/' "$CORE_HOOK"
+            # Show the actual line for debugging
+            echo "=== core_hook.c line 695-700 ==="
+            sed -n '695,700p' "$CORE_HOOK"
+            # Broad match: any line with 'int error' gets __maybe_unused
+            sed -i 's/int error/int __maybe_unused error/g' "$CORE_HOOK"
             echo "Fixed unused variable in core_hook.c"
           fi
           make -j$(nproc --all) O=out ARCH=arm64 CC="ccache clang" CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1
