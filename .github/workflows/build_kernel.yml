@@ -204,7 +204,7 @@ jobs:
           done
 
           # Fix task_state check -> thread_info flag check
-          TASK_FILES="fs/dcache.c fs/namei.c fs/readdir.c fs/proc/task_mmu.c"
+          TASK_FILES="fs/dcache.c fs/namei.c fs/readdir.c fs/stat.c fs/statfs.c fs/proc/task_mmu.c"
           for f in $TASK_FILES; do
             if [ -f "$f" ] && grep -q "TASK_STRUCT_NON_ROOT_USER_APP_PROC" "$f"; then
               sed -i 's/likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)/susfs_is_current_proc_umounted()/g' "$f"
