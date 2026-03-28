@@ -59,18 +59,12 @@ jobs:
         run: |
           cd kernel_workspace/kernel_platform
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s v3.1.9
-          # Fix ksu.c implicit-int: add 'void' to bare function declarations
-          for f in KernelSU/kernel/ksu.c drivers/kernelsu/ksu.c; do
-            if [ -f "$f" ]; then
-              # Show the problematic line area
-              echo "=== ksu.c around line 116 ==="
-              sed -n '110,120p' "$f"
-              # Fix: add 'int' return type to lines that look like bare function decls
-              # Pattern: line starts with identifier followed by (
-              sed -i '/^[a-z_][a-z_0-9]*(/s/^/int /' "$f" 2>/dev/null
-              echo "=== after fix ==="
-              sed -n '110,120p' "$f"
-            fi
+          # Fix ksu.c implicit-int: find and patch ALL ksu.c files
+          echo "=== Finding ksu.c ==="
+          find . -name "ksu.c" -path "*/kernelsu/*" -o -name "ksu.c" -path "*/KernelSU/*" 2>/dev/null
+          for f in $(find . -name "ksu.c" \( -path "*/kernelsu/*" -o -path "*/KernelSU/*" \) 2>/dev/null); do
+            echo "=== Found: $f, lines 110-120 ==="
+            sed -n '110,125p' "$f"
           done
           cd ./KernelSU
           echo "SukiSU version: $(git describe --tags --always)"
