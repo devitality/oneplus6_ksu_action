@@ -125,7 +125,7 @@ if ! grep -q "CONFIG_KSU_SUSFS_SUS_MAP" "$TMC"; then
     cat > /tmp/sus_map_task_mmu.c << 'TMMUEOF'
 #ifdef CONFIG_KSU_SUSFS_SUS_MAP
 		if (file && unlikely(file_inode(vma->vm_file)->i_mapping->flags & BIT_SUS_MAPS) &&
-			susfs_is_current_proc_umounted()) {
+			likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)) {
 			/* Hide this mapping — show as anonymous */
 			file = NULL;
 			dev = 0;
