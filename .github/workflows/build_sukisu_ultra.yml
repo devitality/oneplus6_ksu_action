@@ -59,13 +59,7 @@ jobs:
         run: |
           cd kernel_workspace/kernel_platform
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s v3.1.9
-          # Fix ksu.c implicit-int: find and patch ALL ksu.c files
-          echo "=== Finding ksu.c ==="
-          find . -name "ksu.c" -path "*/kernelsu/*" -o -name "ksu.c" -path "*/KernelSU/*" 2>/dev/null
-          for f in $(find . -name "ksu.c" \( -path "*/kernelsu/*" -o -path "*/KernelSU/*" \) 2>/dev/null); do
-            echo "=== Found: $f, lines 110-120 ==="
-            sed -n '110,125p' "$f"
-          done
+          # ksu.c fix moved to "Fix SUSFS compile issues" step (runs after patches)
           cd ./KernelSU
           echo "SukiSU version: $(git describe --tags --always)"
           KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" 10606)
@@ -123,9 +117,19 @@ jobs:
         if: ${{ matrix.SUSFS == 'true' }}
         run: |
           cd kernel_workspace/kernel_platform
-          # Fix compile issues from --force patch
-          # fs/stat.c has susfs_def.h but BELOW the code that uses TASK_STRUCT_NON_ROOT_USER_APP_PROC
-          # Remove and re-add in the right place
+
+          # Fix ksu.c bare declaration (SukiSU v3.1.9 bug after SUSFS patch)
+          KSU_C="KernelSU/kernel/ksu.c"
+          if [ -f "$KSU_C" ]; then
+            echo "=== ksu.c lines 110-120 ==="
+            sed -n '110,120p' "$KSU_C"
+            # Fix bare function-like lines (no return type)
+            sed -i 's/^ksu_handle_/int ksu_handle_/' "$KSU_C"
+            # Also fix any EXPORT_SYMBOL on its own line without preceding decl
+            echo "=== after fix ==="
+            sed -n '110,120p' "$KSU_C"
+          fi
+
           # Add missing TASK_STRUCT_NON_ROOT_USER_APP_PROC define (in v1.5.11+ but not v1.5.5)
           DEFH="include/linux/susfs_def.h"
           if ! grep -q "TASK_STRUCT_NON_ROOT_USER_APP_PROC" "$DEFH"; then
