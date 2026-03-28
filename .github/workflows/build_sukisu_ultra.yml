@@ -228,7 +228,11 @@ jobs:
           export PATH=$(pwd)/clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04/bin/:$PATH
           cd kernel_workspace/kernel_platform
           make O=out $KERNEL_DEFCONFIG
-          make -j$(nproc --all) O=out ARCH=arm64 CC="ccache clang" CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 KCFLAGS="-Wno-error=implicit-int -Wno-error=implicit-function-declaration"
+          # Remove -Werror from ALL Makefiles (SukiSU v3.1.9 has implicit-int issues)
+          find . -path "./out" -prune -o -name "Makefile" -exec grep -l "\-Werror" {} \; | while read f; do
+            sed -i 's/-Werror[^ ]*//g' "$f"
+          done
+          make -j$(nproc --all) O=out ARCH=arm64 CC="ccache clang" CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 KCFLAGS="-Wno-implicit-int -Wno-implicit-function-declaration"
         env:
           KERNEL_DEFCONFIG: "enchilada_defconfig"
           ARCH: arm64
