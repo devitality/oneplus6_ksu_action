@@ -54,8 +54,13 @@ fi
 # 3. Add function to fs/susfs.c
 echo "  [3/6] Patching fs/susfs.c..."
 SUSC="fs/susfs.c"
+# Ensure susfs_def.h is included (needed for st_susfs_sus_map struct)
+if ! grep -q "susfs_def.h" "$SUSC"; then
+    LAST_INC=$(grep -n "^#include" "$SUSC" | tail -1 | cut -d: -f1)
+    sed -i "${LAST_INC}a #include <linux/susfs_def.h>" "$SUSC"
+    echo "    Added susfs_def.h to $SUSC"
+fi
 if ! grep -q "susfs_add_sus_map" "$SUSC"; then
-    # Find the copy_config_to_buf function and insert before it
     sed -i '/^static int copy_config_to_buf/i \
 /* sus_map */\
 #ifdef CONFIG_KSU_SUSFS_SUS_MAP\
