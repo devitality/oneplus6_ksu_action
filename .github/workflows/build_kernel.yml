@@ -192,6 +192,7 @@ jobs:
 
           # Fix inode->i_state -> inode->i_mapping->flags across all kernel files
           SUSFS_FILES="fs/dcache.c fs/namei.c fs/stat.c fs/statfs.c fs/proc/task_mmu.c
+                       fs/notify/fdinfo.c fs/proc_namespace.c fs/readdir.c
                        fs/overlayfs/inode.c fs/overlayfs/readdir.c fs/overlayfs/super.c"
           for f in $SUSFS_FILES; do
             if [ -f "$f" ] && grep -q "INODE_STATE_" "$f"; then
@@ -204,7 +205,8 @@ jobs:
           done
 
           # Fix task_state check -> thread_info flag check
-          TASK_FILES="fs/dcache.c fs/namei.c fs/readdir.c fs/stat.c fs/statfs.c fs/proc/task_mmu.c"
+          TASK_FILES="fs/dcache.c fs/namei.c fs/readdir.c fs/stat.c fs/statfs.c fs/proc/task_mmu.c
+                     fs/notify/fdinfo.c fs/proc_namespace.c"
           for f in $TASK_FILES; do
             if [ -f "$f" ] && grep -q "TASK_STRUCT_NON_ROOT_USER_APP_PROC" "$f"; then
               sed -i 's/likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)/susfs_is_current_proc_umounted()/g' "$f"
@@ -333,6 +335,9 @@ jobs:
           export PATH=$(pwd)/clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04/bin/:$PATH
           cd kernel_workspace/kernel_platform
           make O=out $KERNEL_DEFCONFIG
+          # Strip -Werror from KernelSU Makefile (unused variable in core_hook.c)
+          KSU_MK="drivers/kernelsu/Makefile"
+          [ -f "$KSU_MK" ] && sed -i 's/-Werror//g' "$KSU_MK"
           make -j$(nproc --all) O=out ARCH=arm64 CC="ccache clang" CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1
         env:
           KERNEL_DEFCONFIG: "enchilada_defconfig"
