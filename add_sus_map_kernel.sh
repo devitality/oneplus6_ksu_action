@@ -25,8 +25,9 @@ if ! grep -q "BIT_SUS_MAPS" "$DEFH"; then
     sed -i '/BIT_ANDROID_SDCARD_ROOT_DIR/a #define BIT_SUS_MAPS BIT(30)' "$DEFH"
 fi
 
-# Add struct st_susfs_sus_map (append before final #endif, or end of file)
-if ! grep -q "st_susfs_sus_map" "$DEFH"; then
+# Add struct st_susfs_sus_map (skip if already in susfs_def.h OR susfs.h)
+SUSH="include/linux/susfs.h"
+if ! grep -q "st_susfs_sus_map" "$DEFH" && ! grep -q "st_susfs_sus_map" "$SUSH" 2>/dev/null; then
     # Try before FORWARD DECLARATION, else before last #endif, else append
     if grep -q "FORWARD DECLARATION" "$DEFH"; then
         sed -i '/FORWARD DECLARATION/i \
