@@ -140,7 +140,9 @@ jobs:
             LAST_INC=$(grep -n "^#include" "$CORE_HOOK" | tail -1 | cut -d: -f1)
             sed -i "${LAST_INC}a static u32 susfs_zygote_sid = 0;" "$CORE_HOOK"
             sed -i "$((LAST_INC+2))a static inline bool susfs_is_umount_for_zygote_system_process_enabled(void) { return false; }" "$CORE_HOOK"
-            echo "Added SUSFS v1.5.5 compat stubs to core_hook.c"
+            # Fix security_add_hooks: 2 args in kernel 4.9, SukiSU passes 3
+            sed -i 's/security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks), "ksu")/security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks))/' "$CORE_HOOK"
+            echo "Added SUSFS v1.5.5 compat stubs + fixed security_add_hooks"
           fi
 
           # Add missing TASK_STRUCT_NON_ROOT_USER_APP_PROC define (in v1.5.11+ but not v1.5.5)
