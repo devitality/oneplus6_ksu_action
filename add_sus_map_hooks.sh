@@ -25,7 +25,7 @@ if ! grep -q "CONFIG_KSU_SUSFS_SUS_MAP" "$TMC"; then
     if [ -n "$DEV_LINE" ]; then
         sed -i "${DEV_LINE}i\\
 #ifdef CONFIG_KSU_SUSFS_SUS_MAP\\
-\t\tif (unlikely(inode->i_mapping->flags \\& BIT_SUS_MAPS) \\&\\& susfs_is_current_proc_umounted()) {\\
+\t\tif (unlikely(inode->i_mapping->flags \\& BIT_SUS_MAPS)) {\\
 \t\t\tfile = NULL;\\
 \t\t\tgoto done;\\
 \t\t}\\
@@ -53,8 +53,7 @@ done:\\
         sed -i "${SMAP_GATHER}i\\
 #ifdef CONFIG_KSU_SUSFS_SUS_MAP\\
 \tif (vma->vm_file \\&\\&\\
-\t\tunlikely(file_inode(vma->vm_file)->i_mapping->flags \\& BIT_SUS_MAPS) \\&\\&\\
-\t\tsusfs_is_current_proc_umounted())\\
+\t\tunlikely(file_inode(vma->vm_file)->i_mapping->flags \\& BIT_SUS_MAPS))\\
 \t\treturn 0;\\
 #endif" "$TMC"
         echo "    Added show_smap hook"
@@ -83,7 +82,7 @@ if ! grep -q "CONFIG_KSU_SUSFS_SUS_MAP" "$BC"; then
     if [ -n "$MAP_FILES_SKIP" ]; then
         sed -i "$((MAP_FILES_SKIP+1))a\\
 #ifdef CONFIG_KSU_SUSFS_SUS_MAP\\
-\t\t\tif (vma->vm_file \\&\\& unlikely(file_inode(vma->vm_file)->i_mapping->flags \\& BIT_SUS_MAPS) \\&\\& susfs_is_current_proc_umounted()) continue;\\
+\t\t\tif (vma->vm_file \\&\\& unlikely(file_inode(vma->vm_file)->i_mapping->flags \\& BIT_SUS_MAPS)) continue;\\
 #endif" "$BC"
         echo "    Added map_files hook"
     fi
