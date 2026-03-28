@@ -125,12 +125,14 @@ jobs:
             sed -i '/MODULE_IMPORT_NS/d' "$KSU_C"
             echo "Removed MODULE_IMPORT_NS from ksu.c"
           fi
-          # Fix allowlist.c: compiler_types.h doesn't exist in kernel 4.9
-          ALLOW_C="KernelSU/kernel/allowlist.c"
-          if [ -f "$ALLOW_C" ] && grep -q "compiler_types.h" "$ALLOW_C"; then
-            sed -i 's|#include <linux/compiler_types.h>|#include <linux/compiler.h>|' "$ALLOW_C"
-            echo "Fixed allowlist.c: compiler_types.h -> compiler.h"
-          fi
+          # Batch fix: headers that don't exist in kernel 4.9
+          for f in $(find KernelSU/kernel/ -name "*.c" -o -name "*.h" 2>/dev/null); do
+            sed -i 's|#include <linux/compiler_types.h>|#include <linux/compiler.h>|' "$f"
+            sed -i 's|#include <linux/sched/task_stack.h>|#include <linux/sched.h>|' "$f"
+            sed -i 's|#include <linux/sched/task.h>|#include <linux/sched.h>|' "$f"
+            sed -i '/MODULE_IMPORT_NS/d' "$f"
+          done
+          echo "Fixed kernel 4.9 header compatibility in KernelSU"
 
           # Add missing TASK_STRUCT_NON_ROOT_USER_APP_PROC define (in v1.5.11+ but not v1.5.5)
           DEFH="include/linux/susfs_def.h"
