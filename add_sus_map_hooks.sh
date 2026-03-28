@@ -33,15 +33,18 @@ if ! grep -q "CONFIG_KSU_SUSFS_SUS_MAP" "$TMC"; then
         echo "    Added show_map_vma hook at line $DEV_LINE"
     fi
 
-    # Add "done:" label before the closing of show_map_vma
-    # Find "seq_putc(m, '\\n');" near end of show_map_vma
-    DONE_LINE=$(grep -n "seq_putc(m, '\\\\n')" "$TMC" | head -1 | cut -d: -f1)
-    if [ -n "$DONE_LINE" ]; then
-        sed -i "${DONE_LINE}i\\
+    # Check if "done:" label already exists (from susfs-kernel.patch)
+    if ! grep -q "^done:" "$TMC" && ! grep -q "^#.*done:" "$TMC"; then
+        DONE_LINE=$(grep -n "seq_putc(m, '\\\\n')" "$TMC" | head -1 | cut -d: -f1)
+        if [ -n "$DONE_LINE" ]; then
+            sed -i "${DONE_LINE}i\\
 #ifdef CONFIG_KSU_SUSFS_SUS_MAP\\
 done:\\
 #endif" "$TMC"
-        echo "    Added done: label"
+            echo "    Added done: label"
+        fi
+    else
+        echo "    done: label already exists"
     fi
 
     # Hook in show_smap: skip stats for hidden maps
