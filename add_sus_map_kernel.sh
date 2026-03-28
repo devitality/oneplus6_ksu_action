@@ -25,14 +25,23 @@ if ! grep -q "BIT_SUS_MAPS" "$DEFH"; then
     sed -i '/BIT_ANDROID_SDCARD_ROOT_DIR/a #define BIT_SUS_MAPS BIT(30)' "$DEFH"
 fi
 
-# Add struct st_susfs_sus_map (before FORWARD DECLARATION section)
+# Add struct st_susfs_sus_map (append before final #endif, or end of file)
 if ! grep -q "st_susfs_sus_map" "$DEFH"; then
-    sed -i '/FORWARD DECLARATION/i \
-/* sus_map — struct always defined, guard only on functions */\
-struct st_susfs_sus_map {\
-\tchar target_pathname[SUSFS_MAX_LEN_PATHNAME];\
-};\
-' "$DEFH"
+    # Try before FORWARD DECLARATION, else before last #endif, else append
+    if grep -q "FORWARD DECLARATION" "$DEFH"; then
+        sed -i '/FORWARD DECLARATION/i \
+struct st_susfs_sus_map { char target_pathname[SUSFS_MAX_LEN_PATHNAME]; };' "$DEFH"
+        echo "    Added struct (before FORWARD DECLARATION)"
+    elif grep -q "^#endif" "$DEFH"; then
+        LAST_ENDIF=$(grep -n "^#endif" "$DEFH" | tail -1 | cut -d: -f1)
+        sed -i "${LAST_ENDIF}i struct st_susfs_sus_map { char target_pathname[SUSFS_MAX_LEN_PATHNAME]; };" "$DEFH"
+        echo "    Added struct (before last #endif at line $LAST_ENDIF)"
+    else
+        echo "struct st_susfs_sus_map { char target_pathname[SUSFS_MAX_LEN_PATHNAME]; };" >> "$DEFH"
+        echo "    Added struct (appended to end)"
+    fi
+else
+    echo "    struct st_susfs_sus_map already present"
 fi
 
 # 2. Add declaration to susfs.h
