@@ -119,23 +119,18 @@ jobs:
           # Fix compile issues from --force patch
           # fs/stat.c has susfs_def.h but BELOW the code that uses TASK_STRUCT_NON_ROOT_USER_APP_PROC
           # Remove and re-add in the right place
-          if grep -q "TASK_STRUCT_NON_ROOT_USER_APP_PROC" fs/stat.c; then
-            # Remove any existing susfs includes
-            sed -i '/#include.*susfs_def\.h/d' fs/stat.c
-            sed -i '/#include.*susfs\.h/d' fs/stat.c
-            # Add AFTER linux/fs.h (which includes types.h) but BEFORE SUSFS code
-            # linux/fs.h is always present and provides bool via types.h
-            FS_H_LINE=$(grep -n '#include <linux/fs.h>' fs/stat.c | head -1 | cut -d: -f1)
-            if [ -n "$FS_H_LINE" ]; then
-              sed -i "${FS_H_LINE}a #include <linux/susfs_def.h>" fs/stat.c
-              echo "Fixed fs/stat.c: susfs_def.h after linux/fs.h (line $((FS_H_LINE+1)))"
-            else
-              # Fallback: after linux/string.h or any late include
-              LATE_INC=$(grep -n '#include <linux/' fs/stat.c | tail -1 | cut -d: -f1)
-              sed -i "${LATE_INC}a #include <linux/susfs_def.h>" fs/stat.c
-              echo "Fixed fs/stat.c: susfs_def.h after last linux/ include (line $((LATE_INC+1)))"
+          # Ensure susfs_def.h is included in ALL files that use SUSFS macros
+          for src in fs/stat.c fs/susfs.c fs/proc/task_mmu.c; do
+            if [ -f "$src" ] && grep -q "TASK_STRUCT_NON_ROOT_USER_APP_PROC\|susfs_add_sus_map\|CONFIG_KSU_SUSFS" "$src"; then
+              sed -i '/#include.*susfs_def\.h/d' "$src"
+              # Add right before first SUSFS usage (foolproof)
+              FIRST_USE=$(grep -n "TASK_STRUCT_NON_ROOT_USER_APP_PROC\|susfs_add_sus_map\|ifdef CONFIG_KSU_SUSFS" "$src" | head -1 | cut -d: -f1)
+              if [ -n "$FIRST_USE" ]; then
+                sed -i "$((FIRST_USE))i #include <linux/susfs_def.h>" "$src"
+                echo "Fixed $src: susfs_def.h at line $FIRST_USE"
+              fi
             fi
-          fi
+          done
 
       - name: Add SUS_MAP feature (standalone, no version upgrade)
         if: ${{ matrix.SUSFS == 'true' }}
