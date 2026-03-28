@@ -149,7 +149,9 @@ jobs:
           if [ -f "$SELINUX_C" ] && grep -q "selinux_state" "$SELINUX_C"; then
             sed -i 's/selinux_state\.enforcing/selinux_enforcing/g' "$SELINUX_C"
             sed -i 's/&selinux_state/NULL/g' "$SELINUX_C"
-            echo "Fixed selinux_state -> selinux_enforcing in KernelSU"
+            FIRST_INC=$(grep -n "^#include" "$SELINUX_C" | tail -1 | cut -d: -f1)
+            sed -i "${FIRST_INC}a extern int selinux_enforcing;" "$SELINUX_C"
+            echo "Fixed selinux_state -> selinux_enforcing + added extern"
           fi
 
           # Add missing TASK_STRUCT_NON_ROOT_USER_APP_PROC define (in v1.5.11+ but not v1.5.5)
