@@ -144,6 +144,13 @@ jobs:
             sed -i 's/security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks), "ksu")/security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks))/' "$CORE_HOOK"
             echo "Added SUSFS v1.5.5 compat stubs + fixed security_add_hooks"
           fi
+          # Fix selinux_state: doesn't exist in kernel 4.9 (uses selinux_enforcing instead)
+          SELINUX_C="KernelSU/kernel/selinux/selinux.c"
+          if [ -f "$SELINUX_C" ] && grep -q "selinux_state" "$SELINUX_C"; then
+            sed -i 's/selinux_state\.enforcing/selinux_enforcing/g' "$SELINUX_C"
+            sed -i 's/&selinux_state/NULL/g' "$SELINUX_C"
+            echo "Fixed selinux_state -> selinux_enforcing in KernelSU"
+          fi
 
           # Add missing TASK_STRUCT_NON_ROOT_USER_APP_PROC define (in v1.5.11+ but not v1.5.5)
           DEFH="include/linux/susfs_def.h"
