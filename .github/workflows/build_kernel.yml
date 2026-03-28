@@ -60,9 +60,8 @@ jobs:
           cd kernel_workspace/kernel_platform
           # backslashxx/KernelSU has built-in kernel 4.9 compat (kernel_compat.c)
           # Unlike SukiSU nongki, this actually supports kernel 3.0-5.4+
-          curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/main/kernel/setup.sh" | bash -s main
+          curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash -s v3.2.2
           cd ./KernelSU
-          git checkout v3.2.2 || echo "Using main branch"
           echo "KernelSU version: $(git describe --tags --always)"
           KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" 10606)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
