@@ -337,11 +337,12 @@ jobs:
           export PATH=$(pwd)/clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04/bin/:$PATH
           cd kernel_workspace/kernel_platform
           make O=out $KERNEL_DEFCONFIG
-          # Strip -Werror from KernelSU Makefile (unused variable in core_hook.c)
-          # drivers/kernelsu is a symlink → need to follow it
-          for MK in drivers/kernelsu/Makefile KernelSU-Next/kernel/Makefile; do
-            [ -f "$MK" ] && sed -i 's/-Werror//g' "$MK" && echo "Stripped -Werror from $MK"
-          done
+          # Fix unused variable 'error' in core_hook.c line 698
+          CORE_HOOK="KernelSU-Next/kernel/core_hook.c"
+          if [ -f "$CORE_HOOK" ]; then
+            sed -i 's/^\(\s*\)int error;/\1int error __attribute__((unused));/' "$CORE_HOOK"
+            echo "Fixed unused variable in core_hook.c"
+          fi
           make -j$(nproc --all) O=out ARCH=arm64 CC="ccache clang" CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1
         env:
           KERNEL_DEFCONFIG: "enchilada_defconfig"
