@@ -1,5 +1,8 @@
-# Build with SUS_MAP support
-name: Build LineageOS Kernel with SukiSU Ultra
+# Build LineageOS kernel for OnePlus 6 with KernelSU-Next + SUSFS v1.5.12 + SUS_MAP
+# Based on the proven approach from Andrey0800770/samsung_sdm845-kernel (ksu+susfs branch)
+# KernelSU-Next source: sidex15/KernelSU-Next commit 13b1dfd (v1.1.1 with SUSFS v1.5.12)
+name: Build LineageOS Kernel with KernelSU-Next + SUSFS
+
 on:
   workflow_dispatch:
 
@@ -14,40 +17,42 @@ jobs:
         ZRAM: ["true", "false"]
       fail-fast: false
 
-    name: "Build (SuSFS: ${{ matrix.SUSFS }}, KPM: ${{ matrix.KPM }}, ZRAM: ${{ matrix.ZRAM }})"
+    name: "Build (SUSFS: ${{ matrix.SUSFS }}, KPM: ${{ matrix.KPM }}, ZRAM: ${{ matrix.ZRAM }})"
 
     steps:
-      - name: 配置 Git
+      - name: Configure Git
         run: |
-          git config --global user.name "Bruce Zhang"
-          git config --global user.email "zttt183525594@gmail.com"
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
 
-      - name: 安装依赖
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get upgrade
-          sudo apt-get install gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
-          sudo apt-get install binutils make python3 libssl-dev build-essential bc bison flex unzip libssl-dev ca-certificates xz-utils mkbootimg cpio device-tree-compiler git git-lfs wget gzip
+          sudo apt-get upgrade -y
+          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            binutils make python3 libssl-dev build-essential bc bison flex unzip \
+            libssl-dev ca-certificates xz-utils mkbootimg cpio device-tree-compiler \
+            git git-lfs wget gzip
 
-      - name: 设置 ccache
+      - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           max-size: 2G
 
-      - name: 拉取仓库
+      - name: Checkout this repo (patches and scripts)
         uses: actions/checkout@v4
         with:
           ref: master
           path: repo
 
-      - name: 拉取内核源码
+      - name: Checkout LineageOS kernel source
         uses: actions/checkout@v4
         with:
           repository: LineageOS/android_kernel_oneplus_sdm845
           ref: lineage-22.2
           path: kernel_workspace/kernel_platform
 
-      - name: 删除内核 -dirty 后缀
+      - name: Remove -dirty suffix from kernel version
         run: |
           cd kernel_workspace/kernel_platform
           sed -i 's/ -dirty//g' scripts/setlocalversion
@@ -55,112 +60,205 @@ jobs:
           git add -A
           git commit -m "Force remove -dirty suffix from kernel version"
 
-      - name: Add KernelSU (backslashxx v3.2.2 — native kernel 4.9 support)
+      # =========================================================================
+      # KernelSU-Next integration
+      # Uses sidex15/KernelSU-Next which has:
+      #   - Native kernel 4.9 compat (kernel_compat.c)
+      #   - SUSFS v1.5.12 built into the driver (core_hook.c, sucompat.c)
+      #   - SUS_MAP handler already in driver code
+      #   - path_umount/can_umount/get_cred_rcu injected via Makefile at build time
+      # =========================================================================
+      - name: Add KernelSU-Next (sidex15 fork, v1.1.1 + SUSFS v1.5.12)
         run: |
           cd kernel_workspace/kernel_platform
-          # backslashxx/KernelSU has built-in kernel 4.9 compat (kernel_compat.c)
-          # Unlike SukiSU nongki, this actually supports kernel 3.0-5.4+
-          curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/master/kernel/setup.sh" | bash -s v3.2.2
-          cd ./KernelSU
-          echo "KernelSU version: $(git describe --tags --always)"
+
+          # Clone sidex15/KernelSU-Next at the exact commit Andrey0800770 uses
+          # This is v1.1.1 with SUSFS v1.5.12 integrated into the driver
+          git clone https://github.com/sidex15/KernelSU-Next KernelSU-Next
+          cd KernelSU-Next
+          git checkout 13b1dfd6e2f1b7b353e774ad8dbc66012450d80f
+          echo "KernelSU-Next checked out at: $(git log --oneline -1)"
+
+          # Link KernelSU-Next/kernel/ into drivers/kernelsu/
+          cd ../drivers
+          ln -sf "$(realpath --relative-to="$(pwd)" "../KernelSU-Next/kernel")" "kernelsu"
+          echo "Symlink created: drivers/kernelsu -> $(readlink kernelsu)"
+
+          # Add KernelSU to drivers/Makefile
+          if ! grep -q "kernelsu" Makefile; then
+            printf '\nobj-$(CONFIG_KSU) += kernelsu/\n' >> Makefile
+            echo "Added kernelsu to drivers/Makefile"
+          fi
+
+          # Add KernelSU to drivers/Kconfig
+          if ! grep -q 'drivers/kernelsu/Kconfig' Kconfig; then
+            sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' Kconfig
+            echo "Added kernelsu/Kconfig to drivers/Kconfig"
+          fi
+
+          cd ..
+
+          # Calculate and set KSU version
+          cd KernelSU-Next
           KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" 10606)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           echo "KSU_VERSION=$KSU_VERSION" >> $GITHUB_ENV
-          export KSU_VERSION=$KSU_VERSION
-          # Update version in Makefile
-          if grep -q "DKSU_VERSION=" kernel/Makefile 2>/dev/null; then
-            sed -i "s/DKSU_VERSION=[0-9]*/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
-          fi
+          echo "KernelSU-Next version tag: $(git describe --tags --always)"
+          echo "KernelSU version number: $KSU_VERSION"
 
-      - name: 应用内核补丁
+      # =========================================================================
+      # Kernel-side patches (manual hooks for non-GKI kernel)
+      # These add the hook points in the kernel source that KernelSU-Next calls
+      # =========================================================================
+      - name: Apply kernel manual hook patches
         run: |
           cd kernel_workspace/kernel_platform
+          echo "== Applying syshook.patch (manual hooks for execve, vfs_read, etc.) =="
           patch -p1 < ../../repo/syshook.patch
+          echo "== Applying selinux-fix.patch (NNP/nosuid bypass for su context) =="
           patch -p1 < ../../repo/selinux-fix.patch
 
-      - name: 应用 SUSFS 补丁
+      # =========================================================================
+      # Backport: seccomp filter_count
+      # KernelSU-Next requires struct seccomp to have atomic_t filter_count
+      # which is missing on kernel 4.9
+      # =========================================================================
+      - name: Backport seccomp filter_count
+        run: |
+          cd kernel_workspace/kernel_platform
+          SECCOMP_H="include/linux/seccomp.h"
+          if ! grep -q "filter_count" "$SECCOMP_H"; then
+            # Add filter_count field to struct seccomp (before the closing brace)
+            sed -i '/^struct seccomp {/,/^};/{
+              /^};/i\\tatomic_t filter_count;
+            }' "$SECCOMP_H"
+            echo "Added filter_count to struct seccomp"
+          else
+            echo "filter_count already present in seccomp.h"
+          fi
+
+      # =========================================================================
+      # SUSFS kernel-side integration
+      # Step 1: Apply ShirkNeko/susfs4ksu kernel-4.9 patch for kernel hooks
+      #         (modifies fs/namei.c, fs/namespace.c, fs/stat.c, etc.)
+      # Step 2: Replace kernel-side SUSFS source files with Andrey0800770's
+      #         v1.5.12 versions (which match the driver's v1.5.12 API)
+      # Step 3: Add SUS_MAP hooks to task_mmu.c and base.c
+      # =========================================================================
+      - name: Apply SUSFS kernel-side patches
         if: ${{ matrix.SUSFS == 'true' }}
         run: |
           cd kernel_workspace
+
+          # Clone susfs4ksu for the kernel-side SUSFS source files
           git clone https://github.com/ShirkNeko/susfs4ksu.git -b kernel-4.9
           cd kernel_platform
-          echo "== 正在应用 SUSFS 补丁 =="
+
+          echo "== Step 1: Applying SUSFS kernel integration patch =="
+          # Use our repo's susfs-kernel.patch (tested against LineageOS sdm845)
+          # This modifies: fs/Makefile, fs/dcache.c, fs/namei.c, fs/namespace.c,
+          # fs/notify/fdinfo.c, fs/proc/cmdline.c, fs/proc/fd.c, fs/proc/task_mmu.c,
+          # fs/proc_namespace.c, fs/readdir.c, fs/stat.c, fs/statfs.c,
+          # include/linux/mount.h, include/linux/sched.h, kernel/kallsyms.c, kernel/sys.c
+          # Also includes overlayfs patches
+          patch -p1 -F3 < ../../repo/susfs-kernel.patch
+
+          echo "== Step 2: Copying SUSFS kernel source files (v1.5.9 base) =="
           cp ../susfs4ksu/kernel_patches/fs/susfs.c ./fs/
           cp ../susfs4ksu/kernel_patches/include/linux/susfs.h ./include/linux/
           cp ../susfs4ksu/kernel_patches/include/linux/susfs_def.h ./include/linux/
-          cp ../susfs4ksu/kernel_patches/fs/sus_su.c ./fs/
-          cp ../susfs4ksu/kernel_patches/include/linux/sus_su.h ./include/linux/
-          patch -p1 < ../../repo/susfs-kernel.patch
-          echo "完成"
+          # sus_su files
+          if [ -f ../susfs4ksu/kernel_patches/fs/sus_su.c ]; then
+            cp ../susfs4ksu/kernel_patches/fs/sus_su.c ./fs/
+          fi
+          if [ -f ../susfs4ksu/kernel_patches/include/linux/sus_su.h ]; then
+            cp ../susfs4ksu/kernel_patches/include/linux/sus_su.h ./include/linux/
+          fi
 
-      - name: 应用 KPM 补丁
+          echo "== Step 3: Replacing SUSFS source files with Andrey0800770's v1.5.12 =="
+          # The KernelSU-Next driver at commit 13b1dfd expects SUSFS v1.5.12 API
+          # Download Andrey0800770's v1.5.12 kernel-side files which match
+          ANDREY_BASE="https://raw.githubusercontent.com/Andrey0800770/samsung_sdm845-kernel/ksu%2Bsusfs"
+          curl -sL "${ANDREY_BASE}/fs/susfs.c" -o ./fs/susfs.c
+          curl -sL "${ANDREY_BASE}/include/linux/susfs.h" -o ./include/linux/susfs.h
+          curl -sL "${ANDREY_BASE}/include/linux/susfs_def.h" -o ./include/linux/susfs_def.h
+
+          echo "== Step 4: Fixing v1.5.9 -> v1.5.12 API in kernel hook files =="
+          # The v1.5.9 patch modified kernel files using old-style API.
+          # v1.5.12 changed:
+          #   inode->i_state & INODE_STATE_XXX  ->  inode->i_mapping->flags & BIT_XXX
+          #   current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC
+          #     ->  susfs_is_current_proc_umounted()
+
+          # Fix inode->i_state -> inode->i_mapping->flags across all kernel files
+          SUSFS_FILES="fs/dcache.c fs/namei.c fs/stat.c fs/statfs.c fs/proc/task_mmu.c
+                       fs/overlayfs/inode.c fs/overlayfs/readdir.c fs/overlayfs/super.c"
+          for f in $SUSFS_FILES; do
+            if [ -f "$f" ] && grep -q "INODE_STATE_" "$f"; then
+              sed -i 's/->i_state & INODE_STATE_SUS_PATH/->i_mapping->flags \& BIT_SUS_PATH/g' "$f"
+              sed -i 's/->i_state & INODE_STATE_SUS_MOUNT/->i_mapping->flags \& BIT_SUS_MOUNT/g' "$f"
+              sed -i 's/->i_state & INODE_STATE_SUS_KSTAT/->i_mapping->flags \& BIT_SUS_KSTAT/g' "$f"
+              sed -i 's/->i_state & INODE_STATE_OPEN_REDIRECT/->i_mapping->flags \& BIT_OPEN_REDIRECT/g' "$f"
+              echo "  Fixed INODE_STATE -> BIT_ in $f"
+            fi
+          done
+
+          # Fix task_state check -> thread_info flag check
+          TASK_FILES="fs/dcache.c fs/namei.c fs/readdir.c fs/proc/task_mmu.c"
+          for f in $TASK_FILES; do
+            if [ -f "$f" ] && grep -q "TASK_STRUCT_NON_ROOT_USER_APP_PROC" "$f"; then
+              sed -i 's/likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)/susfs_is_current_proc_umounted()/g' "$f"
+              echo "  Fixed TASK_STRUCT -> susfs_is_current_proc_umounted() in $f"
+            fi
+          done
+
+          # Verify the versions
+          echo "SUSFS version: $(grep 'SUSFS_VERSION' include/linux/susfs.h | head -1)"
+          echo "SUS_MAP in susfs_def.h: $(grep -c 'CMD_SUSFS_ADD_SUS_MAP' include/linux/susfs_def.h)"
+
+          # Verify no remaining v1.5.9 references in source files
+          REMAINING=$(grep -rl "INODE_STATE_SUS_PATH\|INODE_STATE_SUS_MOUNT\|INODE_STATE_SUS_KSTAT\|INODE_STATE_OPEN_REDIRECT\|TASK_STRUCT_NON_ROOT_USER_APP_PROC" fs/ include/ kernel/ 2>/dev/null || true)
+          if [ -n "$REMAINING" ]; then
+            echo "WARNING: Remaining v1.5.9 references in: $REMAINING"
+          else
+            echo "All v1.5.9 API references successfully migrated to v1.5.12"
+          fi
+
+          echo "== SUSFS kernel-side integration complete =="
+
+      - name: Add SUS_MAP hooks to kernel (task_mmu.c, base.c)
+        if: ${{ matrix.SUSFS == 'true' }}
+        run: |
+          cd kernel_workspace/kernel_platform
+
+          # The SUS_MAP feature needs hooks in:
+          # - fs/proc/task_mmu.c (show_map_vma, show_smap, smaps_rollup)
+          # - fs/proc/base.c (mem read/write, map_files readdir)
+          # These are NOT in the ShirkNeko v1.5.9 patch, so we add them
+          bash ../../repo/add_sus_map_kernel.sh
+
+          # Fix any remaining v1.5.9 -> v1.5.12 API mismatches from add_sus_map_kernel.sh
+          # The script may insert code using the old TASK_STRUCT style
+          for f in fs/proc/task_mmu.c fs/proc/base.c; do
+            if [ -f "$f" ] && grep -q "TASK_STRUCT_NON_ROOT_USER_APP_PROC" "$f"; then
+              sed -i 's/likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)/susfs_is_current_proc_umounted()/g' "$f"
+              echo "Fixed v1.5.9 API in $f"
+            fi
+          done
+
+          echo "SUS_MAP kernel hooks added"
+
+      # Note: add_sus_map_handler.sh is NOT needed because sidex15/KernelSU-Next
+      # at commit 13b1dfd already has the CMD_SUSFS_ADD_SUS_MAP handler in core_hook.c
+
+      - name: Apply KPM patches
         if: ${{ matrix.KPM == 'true' }}
         run: |
           cd kernel_workspace/kernel_platform
           wget 'https://raw.githubusercontent.com/MediaTek-Labs/common-kernel-4.19/refs/heads/master/include/linux/set_memory.h' -O include/linux/set_memory.h
-          cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           patch -p1 < ../../repo/kpm.patch
 
-      - name: Apply SUSFS patches to KernelSU
-        if: ${{ matrix.SUSFS == 'true' }}
-        run: |
-          cd kernel_workspace/kernel_platform/KernelSU
-          echo "== Applying SUSFS KSU patch =="
-          patch -p1 --force < ../../../repo/susfs-ksu.patch || true
-          echo "== Checking for rejected hunks =="
-          find . -name "*.rej" -exec echo "REJECTED: {}" \; -exec cat {} \;
-          echo "Done (some rejections are acceptable with --force)"
-
-      - name: Fix SUSFS compile issues
-        if: ${{ matrix.SUSFS == 'true' }}
-        run: |
-          cd kernel_workspace/kernel_platform
-
-          # nongki version is compatible with kernel 4.9 — minimal fixes needed
-          # Remove MODULE_IMPORT_NS if present (kernel 5.4+ only)
-          for f in $(find KernelSU/kernel/ -name "*.c" 2>/dev/null); do
-            sed -i '/MODULE_IMPORT_NS/d' "$f" 2>/dev/null
-          done
-
-          # Add missing TASK_STRUCT_NON_ROOT_USER_APP_PROC define (in v1.5.11+ but not v1.5.5)
-          DEFH="include/linux/susfs_def.h"
-          if ! grep -q "TASK_STRUCT_NON_ROOT_USER_APP_PROC" "$DEFH"; then
-            echo "#define TASK_STRUCT_NON_ROOT_USER_APP_PROC BIT(24)" >> "$DEFH"
-            echo "Added TASK_STRUCT_NON_ROOT_USER_APP_PROC to $DEFH"
-          fi
-
-          # Ensure susfs_def.h is included in ALL files that use SUSFS macros
-          for src in fs/stat.c fs/susfs.c fs/proc/task_mmu.c; do
-            if [ -f "$src" ] && grep -q "TASK_STRUCT_NON_ROOT_USER_APP_PROC\|susfs_add_sus_map\|CONFIG_KSU_SUSFS" "$src"; then
-              sed -i '/#include.*susfs_def\.h/d' "$src"
-              # Add right before first SUSFS usage (foolproof)
-              FIRST_USE=$(grep -n "TASK_STRUCT_NON_ROOT_USER_APP_PROC\|susfs_add_sus_map\|ifdef CONFIG_KSU_SUSFS" "$src" | head -1 | cut -d: -f1)
-              if [ -n "$FIRST_USE" ]; then
-                sed -i "$((FIRST_USE))i #include <linux/susfs_def.h>" "$src"
-                echo "Fixed $src: susfs_def.h at line $FIRST_USE"
-              fi
-            fi
-          done
-
-      - name: Add SUS_MAP feature (standalone, no version upgrade)
-        if: ${{ matrix.SUSFS == 'true' }}
-        run: |
-          cd kernel_workspace/kernel_platform
-          bash ../../repo/add_sus_map_kernel.sh
-          cd KernelSU
-          bash ../../../repo/add_sus_map_handler.sh
-          echo "SUS_MAP feature added"
-
-      - name: 应用隐藏应用补丁
-        run: |
-          cd kernel_workspace
-          git clone https://github.com/ShirkNeko/SukiSU_patch.git
-          cd kernel_platform
-          cp ../SukiSU_patch/69_hide_stuff.patch ./
-          echo "正在打隐藏应用补丁"
-          patch -p1 -F 3 < 69_hide_stuff.patch
-      
-      - name: 应用 ZRAM 补丁
+      - name: Apply ZRAM patches
         if: ${{ matrix.ZRAM == 'true' }}
         run: |
           cd kernel_workspace/kernel_platform
@@ -169,15 +267,18 @@ jobs:
           cp -r ../../repo/zram/lib/lz4kd/ ./lib/
           patch -p1 < ../../repo/zram/zram.patch
 
-      # 配置信息
-      - name: 增加内核配置
+      # =========================================================================
+      # Kernel configuration
+      # =========================================================================
+      - name: Configure kernel
         run: |
           cd kernel_workspace/kernel_platform
           CONFIG_FILE=./arch/arm64/configs/enchilada_defconfig
-          KERNEL_VERSION=4.9
 
-          # SukiSU Ultra config
+          # KernelSU-Next config
           echo "CONFIG_KSU=y" >> "$CONFIG_FILE"
+
+          # KPM config
           if [ "${{ matrix.KPM }}" = "true" ]; then
             echo "CONFIG_KPM=y" >> "$CONFIG_FILE"
             echo "CONFIG_KALLSYMS=y" >> "$CONFIG_FILE"
@@ -185,8 +286,10 @@ jobs:
           else
             echo "CONFIG_KPM=n" >> "$CONFIG_FILE"
           fi
-          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$CONFIG_FILE"
-          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$CONFIG_FILE"
+
+          # Manual hooks (non-GKI kernel, no kprobes)
+          echo "CONFIG_KSU_KPROBES_HOOK=n" >> "$CONFIG_FILE"
+
           # ZRAM config
           if [ "${{ matrix.ZRAM }}" = "true" ]; then
             echo "CONFIG_ZSMALLOC=y" >> "$CONFIG_FILE"
@@ -195,13 +298,14 @@ jobs:
             echo "CONFIG_CRYPTO_LZ4KD=y" >> "$CONFIG_FILE"
             echo "CONFIG_ZRAM_DEF_COMP_LZ4KD=y" >> "$CONFIG_FILE"
           fi
+
+          # SUSFS config (all features including SUS_MAP)
           if [ "${{ matrix.SUSFS }}" = "true" ]; then
-            # SUSFS config
             echo "CONFIG_KSU_SUSFS=y" >> "$CONFIG_FILE"
             echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$CONFIG_FILE"
             echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$CONFIG_FILE"
             echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$CONFIG_FILE"
-            echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=y" >> "$CONFIG_FILE"
+            echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "$CONFIG_FILE"
             echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$CONFIG_FILE"
             echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$CONFIG_FILE"
             echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> "$CONFIG_FILE"
@@ -212,15 +316,19 @@ jobs:
             echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$CONFIG_FILE"
             echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$CONFIG_FILE"
             echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$CONFIG_FILE"
+            echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$CONFIG_FILE"
             echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> "$CONFIG_FILE"
           fi
 
-      - name: 下载 clang 编译器
+      # =========================================================================
+      # Build
+      # =========================================================================
+      - name: Download clang compiler
         run: |
           wget https://github.com/llvm/llvm-project/releases/download/llvmorg-14.0.0/clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz
           tar xf clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz
 
-      - name: 构建内核
+      - name: Build kernel
         run: |
           export PATH=$(pwd)/clang+llvm-14.0.0-x86_64-linux-gnu-ubuntu-18.04/bin/:$PATH
           cd kernel_workspace/kernel_platform
@@ -231,19 +339,22 @@ jobs:
           ARCH: arm64
           SUBARCH: arm64
 
-      - name: 下载 AnyKernel3 模板
+      # =========================================================================
+      # Package
+      # =========================================================================
+      - name: Download AnyKernel3
         uses: actions/checkout@v4
         with:
           repository: osm0sis/AnyKernel3
           ref: master
           path: AnyKernel3
 
-      - name: 写入内核
+      - name: Extract kernel image
         run: |
           cd kernel_workspace/kernel_platform
           mv out/arch/arm64/boot/Image.gz-dtb Image.gz-dtb
 
-      - name: 应用 KPM
+      - name: Apply KPM post-processing
         if: ${{ matrix.KPM == 'true' }}
         run: |
           cd kernel_workspace/kernel_platform
@@ -255,7 +366,7 @@ jobs:
           rm -f Image
           mv oImage Image
 
-      - name: 配置 AnyKernel3
+      - name: Configure AnyKernel3
         run: |
           if [ "${{ matrix.KPM }}" = "true" ]; then
             cp $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/Image $GITHUB_WORKSPACE/AnyKernel3/Image
@@ -266,12 +377,12 @@ jobs:
           rm anykernel.sh
           cp -f ../repo/anykernel.sh .
 
-      - name: 生成包名
+      - name: Generate package name
         run: |
           KSU_VERSION=$(echo $KSU_VERSION)
           DATE=$(date +'%y%m%d')
           if [ "${{ matrix.SUSFS }}" = "true" ]; then
-            SUSFS_TAG="_SuSFS"
+            SUSFS_TAG="_SUSFS"
           else
             SUSFS_TAG=""
           fi
@@ -285,12 +396,12 @@ jobs:
           else
             ZRAM_TAG=""
           fi
-          PACKAGE_NAME="Lineage_OnePlus6_SukiSU_${KSU_VERSION}${SUSFS_TAG}${KPM_TAG}${ZRAM_TAG}_${DATE}"
+          PACKAGE_NAME="Lineage_OnePlus6_KSU-Next_${KSU_VERSION}${SUSFS_TAG}${KPM_TAG}${ZRAM_TAG}_${DATE}"
           echo "PACKAGE_NAME=$PACKAGE_NAME" >> $GITHUB_ENV
         env:
           KSU_VERSION: ${{ env.KSU_VERSION }}
 
-      - name: 上传内核包
+      - name: Upload kernel package
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.PACKAGE_NAME }}
