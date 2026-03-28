@@ -245,32 +245,18 @@ jobs:
           STUBS
           echo "  Added v1.5.12 function stubs"
 
+          echo "== Step 6: Download Andrey0800770's task_mmu.c with proper SUS_MAP hooks =="
+          # Andrey's task_mmu.c has the correct v1.5.12 SUS_MAP implementation
+          # (12 SUS_MAP references, properly integrated). Our add_sus_map_kernel.sh
+          # creates an incompatible v1.5.9-style implementation.
+          ANDREY_BASE="https://raw.githubusercontent.com/Andrey0800770/samsung_sdm845-kernel/ksu%2Bsusfs"
+          curl -sL "${ANDREY_BASE}/fs/proc/task_mmu.c" -o ./fs/proc/task_mmu.c
+          curl -sL "${ANDREY_BASE}/fs/proc/base.c" -o ./fs/proc/base.c
+          echo "  Downloaded Andrey's task_mmu.c + base.c (v1.5.12 SUS_MAP)"
+          echo "  SUS_MAP refs in task_mmu.c: $(grep -c SUS_MAP fs/proc/task_mmu.c)"
+          echo "  SUS_MAP refs in base.c: $(grep -c SUS_MAP fs/proc/base.c)"
+
           echo "== SUSFS kernel-side integration complete =="
-
-      - name: Add SUS_MAP hooks to kernel (task_mmu.c, base.c)
-        if: ${{ matrix.SUSFS == 'true' }}
-        run: |
-          cd kernel_workspace/kernel_platform
-
-          # The SUS_MAP feature needs hooks in:
-          # - fs/proc/task_mmu.c (show_map_vma, show_smap, smaps_rollup)
-          # - fs/proc/base.c (mem read/write, map_files readdir)
-          # These are NOT in the ShirkNeko v1.5.9 patch, so we add them
-          bash ../../repo/add_sus_map_kernel.sh
-
-          # Fix any remaining v1.5.9 -> v1.5.12 API mismatches from add_sus_map_kernel.sh
-          # The script may insert code using the old TASK_STRUCT style
-          for f in fs/proc/task_mmu.c fs/proc/base.c; do
-            if [ -f "$f" ] && grep -q "TASK_STRUCT_NON_ROOT_USER_APP_PROC" "$f"; then
-              sed -i 's/likely(current->susfs_task_state & TASK_STRUCT_NON_ROOT_USER_APP_PROC)/susfs_is_current_proc_umounted()/g' "$f"
-              echo "Fixed v1.5.9 API in $f"
-            fi
-          done
-
-          echo "SUS_MAP kernel hooks added"
-
-      # Note: add_sus_map_handler.sh is NOT needed because sidex15/KernelSU-Next
-      # at commit 13b1dfd already has the CMD_SUSFS_ADD_SUS_MAP handler in core_hook.c
 
       - name: Apply KPM patches
         if: ${{ matrix.KPM == 'true' }}
