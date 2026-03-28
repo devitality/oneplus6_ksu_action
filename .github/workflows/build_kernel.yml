@@ -55,17 +55,23 @@ jobs:
           git add -A
           git commit -m "Force remove -dirty suffix from kernel version"
 
-      - name: 添加 SukiSU Ultra (pinned to v3.1.9)
+      - name: Add KernelSU (backslashxx v3.2.2 — native kernel 4.9 support)
         run: |
           cd kernel_workspace/kernel_platform
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s nongki
+          # backslashxx/KernelSU has built-in kernel 4.9 compat (kernel_compat.c)
+          # Unlike SukiSU nongki, this actually supports kernel 3.0-5.4+
+          curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/main/kernel/setup.sh" | bash -s main
           cd ./KernelSU
-          echo "SukiSU version: $(git describe --tags --always)"
+          git checkout v3.2.2 || echo "Using main branch"
+          echo "KernelSU version: $(git describe --tags --always)"
           KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" 10606)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           echo "KSU_VERSION=$KSU_VERSION" >> $GITHUB_ENV
           export KSU_VERSION=$KSU_VERSION
-          sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
+          # Update version in Makefile
+          if grep -q "DKSU_VERSION=" kernel/Makefile 2>/dev/null; then
+            sed -i "s/DKSU_VERSION=[0-9]*/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
+          fi
 
       - name: 应用内核补丁
         run: |
@@ -96,21 +102,15 @@ jobs:
           cd $GITHUB_WORKSPACE/kernel_workspace/kernel_platform
           patch -p1 < ../../repo/kpm.patch
 
-      - name: 应用 SukiSU 修补
+      - name: Apply SUSFS patches to KernelSU
         if: ${{ matrix.SUSFS == 'true' }}
         run: |
           cd kernel_workspace/kernel_platform/KernelSU
-          echo "== 正在应用 SukiSU 修补 =="
+          echo "== Applying SUSFS KSU patch =="
           patch -p1 --force < ../../../repo/susfs-ksu.patch || true
-          echo "== Checking for critical patch failures =="
-          # These files MUST patch successfully for SUSFS to work
-          for critical in kernel/Kconfig kernel/ksu.c kernel/ksud.c kernel/sucompat.c; do
-            if [ -f "${critical}.rej" ]; then
-              echo "CRITICAL: $critical has rejected hunks"
-              cat "${critical}.rej"
-            fi
-          done
-          echo "完成 (non-critical .rej files are acceptable)"
+          echo "== Checking for rejected hunks =="
+          find . -name "*.rej" -exec echo "REJECTED: {}" \; -exec cat {} \;
+          echo "Done (some rejections are acceptable with --force)"
 
       - name: Fix SUSFS compile issues
         if: ${{ matrix.SUSFS == 'true' }}
