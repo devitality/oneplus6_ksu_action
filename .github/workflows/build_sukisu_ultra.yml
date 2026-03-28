@@ -59,12 +59,19 @@ jobs:
         run: |
           cd kernel_workspace/kernel_platform
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s v3.1.9
-          # Fix ksu.c compile error: disable -Werror for KernelSU module
-          KSU_MK="KernelSU/kernel/Makefile"
-          if [ -f "$KSU_MK" ]; then
-            sed -i 's/-Werror//g' "$KSU_MK"
-            echo "Removed -Werror from KernelSU Makefile"
-          fi
+          # Fix ksu.c implicit-int: add 'void' to bare function declarations
+          for f in KernelSU/kernel/ksu.c drivers/kernelsu/ksu.c; do
+            if [ -f "$f" ]; then
+              # Show the problematic line area
+              echo "=== ksu.c around line 116 ==="
+              sed -n '110,120p' "$f"
+              # Fix: add 'int' return type to lines that look like bare function decls
+              # Pattern: line starts with identifier followed by (
+              sed -i '/^[a-z_][a-z_0-9]*(/s/^/int /' "$f" 2>/dev/null
+              echo "=== after fix ==="
+              sed -n '110,120p' "$f"
+            fi
+          done
           cd ./KernelSU
           echo "SukiSU version: $(git describe --tags --always)"
           KSU_VERSION=$(expr $(/usr/bin/git rev-list --count HEAD) "+" 10606)
